@@ -1,0 +1,134 @@
+"""
+Vercel serverless entry point for Venmo OSINT.
+
+Differences from local app.py:
+  - No threading (serverless is single-process)
+  - No file-based cookie storage; cookie supplied via VENMO_COOKIE env var
+    (set it in Vercel project settings → Environment Variables)
+  - Pattern search runs sequentially with a hard cap of 5 probes to stay
+    inside Vercel's 10-second function timeout
+  - SESSION is re-created per cold-start (no persistent state)
+"""
+
+import json
+import os
+import sys
+
+# Make sure the project root is on the path so we can import venmo_osint
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from flask import Flask, jsonify, request, render_template_string
+
+import requests
+from bs4 import BeautifulSoup
+from typing import Optional
+
+# ── re-import the pieces we need, with serverless-safe overrides ──────────────
+from venmo_osint import (
+    SESSION,
+    apply_cookie,
+    fetch_profile,
+    search_users,
+    username_patterns,
+    _ddg_name_search,
+    _extract_username_from_url,
+)
+
+# Apply cookie from environment variable at cold-start
+_env_cookie = os.environ.get("VENMO_COOKIE", "")
+if _env_cookie:
+    apply_cookie(_env_cookie)
+
+app = Flask(__name__)
+
+
+def search_by_name_serverless(first: str, last: str, limit: int = 8) -> list[dict]:
+    """
+    Serverless-safe name search: no threading, max 5 pattern probes.
+    DDG results come first, then top-N patterns to fill remaining slots.
+    """
+    results: list[dict] = []
+    seen: set[str] = set()
+
+    # Strategy 1: DuckDuckGo
+    for r in _ddg_name_search(first, last, limit):
+        u = (r.get("username") or "").lower()
+        if u and u not in seen:
+            seen.add(u)
+            results.append(r)
+
+    # Strategy 2: top-5 pattern probes (sequential, stays under timeout)
+    if len(results) < limit:
+        for pattern in username_patterns(first, last, top_only=True)[:5]:
+            if len(results) >= limit:
+                break
+            if pattern.lower() in seen:
+                continue
+            profile = fetch_profile(pattern)
+            if "error" not in profile:
+                display = (profile.get("display_name") or "").lower()
+                if first.lower() in display or last.lower() in display:
+                    seen.add(pattern.lower())
+                    profile["_source"] = "pattern_guess"
+                    results.append(profile)
+
+    return results or [{"note": "No results found. Try a different spelling or add VENMO_COOKIE in Vercel env vars."}]
+
+
+# ── routes ────────────────────────────────────────────────────────────────────
+
+# Serve the same HTML from app.py (import it)
+try:
+    from app import HTML
+except ImportError:
+    HTML = "<h1>Venmo OSINT</h1><p>Could not load app.py</p>"
+
+
+@app.route("/")
+def index():
+    return render_template_string(HTML)
+
+
+@app.route("/api/profile/<username>")
+def api_profile(username):
+    return jsonify(fetch_profile(username))
+
+
+@app.route("/api/search/name")
+def api_search_name():
+    first = request.args.get("first", "").strip()
+    last  = request.args.get("last",  "").strip()
+    limit = min(int(request.args.get("limit", 8)), 8)  # cap at 8 on Vercel
+    if not first and not last:
+        return jsonify([{"error": "Provide at least a first or last name"}])
+    return jsonify(search_by_name_serverless(first, last, limit=limit))
+
+
+@app.route("/api/search")
+def api_search():
+    q     = request.args.get("q", "").strip()
+    limit = int(request.args.get("limit", 10))
+    if not q:
+        return jsonify([{"error": "Missing query parameter 'q'"}])
+    return jsonify(search_users(q, limit=limit))
+
+
+@app.route("/api/cookie/status")
+def api_cookie_status():
+    has_cookie = bool(_env_cookie or SESSION.cookies)
+    source = "VENMO_COOKIE env var" if _env_cookie else ("session" if SESSION.cookies else "not set")
+    return jsonify({"active": has_cookie, "detail": source})
+
+
+# Cookie save/clear are no-ops on Vercel (use env vars instead)
+@app.route("/api/cookie/save", methods=["POST"])
+def api_cookie_save():
+    return jsonify({"ok": False, "error": "On Vercel, set the VENMO_COOKIE environment variable in your project settings instead of saving it here."})
+
+
+@app.route("/api/cookie/clear", methods=["POST"])
+def api_cookie_clear():
+    return jsonify({"ok": False, "error": "On Vercel, remove the VENMO_COOKIE environment variable in your project settings."})
+
+
+# Vercel calls the app as `app`
