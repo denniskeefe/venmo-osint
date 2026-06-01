@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+env/
+venv/
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Secrets / config — NEVER commit the saved cookie
+.venmo_osint
+
+# IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Claude
+.claude/
