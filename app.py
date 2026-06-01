@@ -64,7 +64,7 @@ HTML = r"""<!DOCTYPE html>
   .shell   { display: flex; height: 100vh; overflow: hidden; }
   .sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border);
              display: flex; flex-direction: column; flex-shrink: 0; }
-  .main    { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .main    { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 
   /* ── sidebar ─────────────────────────────────────────────── */
   .logo { padding: 24px 20px 16px; font-size: 16px; font-weight: 700;
@@ -96,12 +96,86 @@ HTML = r"""<!DOCTYPE html>
 
   /* ── topbar ──────────────────────────────────────────────── */
   .topbar { padding: 16px 28px; border-bottom: 1px solid var(--border);
-            display: flex; align-items: center; gap: 12px; background: var(--surface); }
+            display: flex; align-items: center; gap: 12px; background: var(--surface); flex-shrink: 0; }
   .topbar h1 { font-size: 15px; font-weight: 600; }
   .topbar .sub { color: var(--muted); font-size: 12.5px; margin-left: auto; }
 
   /* ── content area ────────────────────────────────────────── */
   .content { flex: 1; overflow-y: auto; padding: 28px; }
+
+  /* ── bottom nav (mobile only) ────────────────────────────── */
+  .bottom-nav { display: none; }
+
+  /* ── mobile breakpoint ───────────────────────────────────── */
+  @media (max-width: 640px) {
+    /* swap sidebar for bottom nav */
+    .sidebar     { display: none; }
+    .bottom-nav  {
+      display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+      background: var(--surface); border-top: 1px solid var(--border);
+      height: 60px;
+    }
+    .bottom-nav-item {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 3px; border: none; background: none;
+      color: var(--muted); font-size: 10px; font-weight: 600; cursor: pointer;
+      transition: color .15s; padding: 6px 0;
+    }
+    .bottom-nav-item.active { color: var(--accent); }
+    .bottom-nav-item svg    { width: 20px; height: 20px; }
+
+    /* main fills full width; leave room for fixed bottom nav */
+    .main    { width: 100%; }
+    .content { padding: 16px 14px 80px; }  /* 80px = bottom nav height + gap */
+
+    /* topbar: hide subtitle, tighten padding */
+    .topbar      { padding: 12px 16px; }
+    .topbar .sub { display: none; }
+    .topbar h1   { font-size: 15px; }
+
+    /* cookie badge moves into topbar on mobile */
+    .topbar-badge { display: inline-flex !important; }
+
+    /* search row stacks vertically */
+    .search-row          { flex-direction: column; }
+    .search-row input    { width: 100% !important; flex: none !important; }
+    .search-row .btn     { width: 100%; justify-content: center; }
+
+    /* name search: first/last on one row, limit hidden, button full width */
+    #mode-name .search-row          { flex-direction: row; flex-wrap: wrap; gap: 8px; }
+    #mode-name .search-row input[id="first-input"],
+    #mode-name .search-row input[id="last-input"] { flex: 1 1 calc(50% - 4px) !important; min-width: 0; }
+    #mode-name .search-row input[id="name-limit"] { display: none; }
+    #mode-name .search-row .btn     { flex: 1 1 100%; }
+
+    /* meta grid single column */
+    .meta-grid { grid-template-columns: 1fr 1fr; }
+
+    /* profile card header: tighter */
+    .card-header { gap: 12px; }
+    .avatar, .avatar-placeholder { width: 48px; height: 48px; }
+    .profile-name { font-size: 16px; }
+
+    /* result cards: truncate long IDs */
+    .result-id { display: none; }
+    .result-card { padding: 12px 14px; }
+
+    /* transactions wrap nicely */
+    .txn-row { gap: 6px; }
+
+    /* cookie panel full width */
+    .cookie-panel { max-width: 100%; }
+
+    /* mode tabs scrollable */
+    .mode-tabs { overflow-x: auto; width: 100%; }
+
+    /* cards padding */
+    .card { padding: 16px; }
+  }
+
+  @media (max-width: 380px) {
+    .meta-grid { grid-template-columns: 1fr; }
+  }
 
   /* ── panels ──────────────────────────────────────────────── */
   .panel { display: none; }
@@ -307,10 +381,37 @@ HTML = r"""<!DOCTYPE html>
     </div>
   </aside>
 
+  <!-- BOTTOM NAV (mobile) -->
+  <nav class="bottom-nav">
+    <button class="bottom-nav-item active" id="bnav-profile" onclick="showPanel('profile')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+        <circle cx="12" cy="7" r="4"/>
+      </svg>
+      Profile
+    </button>
+    <button class="bottom-nav-item" id="bnav-search" onclick="showPanel('search')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      Search
+    </button>
+    <button class="bottom-nav-item" id="bnav-cookie" onclick="showPanel('cookie')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      Auth
+    </button>
+  </nav>
+
   <!-- MAIN -->
   <div class="main">
     <div class="topbar">
       <h1 id="panel-title">Profile Lookup</h1>
+      <div class="cookie-badge off topbar-badge" id="ck-badge-top" style="display:none;margin-left:auto">
+        <span class="dot"></span><span id="ck-label-top">No cookie</span>
+      </div>
       <span class="sub" id="panel-sub">Enter a Venmo username to retrieve public info</span>
     </div>
 
@@ -424,24 +525,37 @@ const PANELS = {
 function showPanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.bottom-nav-item').forEach(b => b.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
   document.getElementById('nav-' + name).classList.add('active');
+  const bnav = document.getElementById('bnav-' + name);
+  if (bnav) bnav.classList.add('active');
   document.getElementById('panel-title').textContent = PANELS[name].title;
   document.getElementById('panel-sub').textContent   = PANELS[name].sub;
+  // scroll content to top on navigation
+  document.querySelector('.content').scrollTop = 0;
 }
 
 // ── cookie badge ────────────────────────────────────────────────────────────
 async function refreshBadge() {
   const res  = await fetch('/api/cookie/status');
   const data = await res.json();
+  // sidebar badge
   const badge = document.getElementById('ck-badge');
   const label = document.getElementById('ck-label');
+  // topbar badge (mobile)
+  const badgeTop = document.getElementById('ck-badge-top');
+  const labelTop = document.getElementById('ck-label-top');
   if (data.active) {
     badge.className = 'cookie-badge on';
     label.textContent = 'Cookie active';
+    badgeTop.className = 'cookie-badge on topbar-badge';
+    labelTop.textContent = 'Cookie active';
   } else {
     badge.className = 'cookie-badge off';
     label.textContent = 'No cookie';
+    badgeTop.className = 'cookie-badge off topbar-badge';
+    labelTop.textContent = 'No cookie';
   }
 }
 refreshBadge();
