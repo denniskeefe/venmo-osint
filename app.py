@@ -586,12 +586,7 @@ HTML = r"""<!DOCTYPE html>
             <div style="color:var(--muted);font-size:13px;margin-bottom:18px">
               Required for search. Profile lookup works without it.
             </div>
-            <button class="btn btn-primary" onclick="openGrabModal()" style="width:100%;justify-content:center;margin-bottom:16px">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              </svg>
-              Grab from Browser
-            </button>
+            <div id="grab-btn-area"></div>
 
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
               <div style="flex:1;height:1px;background:var(--border)"></div>
@@ -669,6 +664,35 @@ async function refreshBadge() {
   }
 }
 refreshBadge();
+
+// ── capabilities check (grab-from-browser only works locally) ────────────────
+async function initCapabilities() {
+  try {
+    const res  = await fetch('/api/cookie/capabilities');
+    const caps = await res.json();
+    const area = document.getElementById('grab-btn-area');
+    if (caps.grab_available) {
+      area.innerHTML = `
+        <button class="btn btn-primary" onclick="openGrabModal()" style="width:100%;justify-content:center;margin-bottom:16px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          Grab from Browser
+        </button>`;
+    } else {
+      area.innerHTML = `
+        <div class="alert alert-info" style="margin-bottom:16px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span><strong>Grab from Browser</strong> is only available when running locally.
+          Paste your cookie manually below, or
+          <a href="https://github.com/denniskeefe/venmo-osint" target="_blank" style="color:inherit">run the app on your machine</a>.</span>
+        </div>`;
+    }
+  } catch(e) { /* silently ignore */ }
+}
+initCapabilities();
 
 // ── profile lookup ───────────────────────────────────────────────────────────
 async function lookupProfile() {
@@ -1026,6 +1050,11 @@ def api_cookie_save():
     save_cookie(cookie)
     apply_cookie(cookie)
     return jsonify({"ok": True})
+
+
+@app.route("/api/cookie/capabilities")
+def api_cookie_capabilities():
+    return jsonify({"grab_available": True})
 
 
 @app.route("/api/cookie/grab", methods=["POST"])

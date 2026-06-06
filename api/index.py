@@ -149,6 +149,11 @@ def api_cookie_clear():
     return jsonify({"ok": False, "error": "On Vercel, remove the VENMO_COOKIE environment variable in your project settings."})
 
 
+@app.route("/api/cookie/capabilities")
+def api_cookie_capabilities():
+    return jsonify({"grab_available": False})
+
+
 @app.route("/api/cookie/grab", methods=["POST"])
 def api_cookie_grab():
     return jsonify({
