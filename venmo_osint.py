@@ -130,12 +130,11 @@ def fetch_profile(username: str) -> dict:
     """
     username = username.strip().lstrip("@")
 
-    # ── Strategy 1: public REST API (always available, no cookie needed) ──────
+    # ── Strategy 1: public REST API (fast, no cookie needed) ─────────────────
     base = _fetch_api_profile(username)
-    if "error" in base and "404" in base["error"]:
-        return base  # definitive not-found, stop here
 
-    # ── Strategy 2: scrape account page for transactions + extra fields ───────
+    # ── Strategy 2: scrape account page (richer data; also handles usernames
+    #    like First-Last-N that the REST API doesn't resolve) ─────────────────
     scraped = _fetch_scraped_profile(username)
 
     if "error" not in base:
@@ -146,8 +145,13 @@ def fetch_profile(username: str) -> dict:
             base["recent_transactions"]= scraped.get("recent_transactions", [])
         return base
 
-    # API failed (rate-limited?) — fall back to scrape-only
-    return scraped
+    if "error" not in scraped:
+        # API failed (404 or rate-limited) but scrape worked — use scrape only
+        return scraped
+
+    # Both failed — return whichever error is more informative
+    # Prefer a hard 404 from scrape over a generic API error
+    return scraped if "404" in scraped.get("error", "") else base
 
 
 def _fetch_api_profile(username: str) -> dict:
@@ -386,30 +390,40 @@ def search_by_name(first: str, last: str, limit: int = 10) -> list[dict]:
 
     def dash_number_worker():
         """
-        Probe First-Last-N sequentially (N = 1, 2, 3, …) and stop after
-        MAX_MISSES consecutive 404s. Handles any number, no hard ceiling.
+        Probe First-Last-N for N = 1, 2, 3, … in concurrent batches.
+        Each batch of BATCH_SIZE numbers is fired in parallel; we stop
+        when an entire batch returns zero hits (no more accounts exist
+        beyond that point). Handles gaps from deleted accounts.
         """
-        MAX_MISSES = 3
+        BATCH_SIZE = 10         # concurrent probes per round
         MAX_N      = 200        # absolute safety cap
         base       = f"{first.lower().strip()}-{last.lower().strip()}"
-        misses     = 0
-        for n in range(1, MAX_N + 1):
+        n          = 1
+
+        while n <= MAX_N:
             with lock:
                 if len(results) >= limit:
                     return
-            profile = fetch_profile(f"{base}-{n}")
-            if "error" in profile:
-                misses += 1
-                if misses >= MAX_MISSES:
-                    return          # gap detected — stop scanning
-            else:
-                misses = 0          # reset gap counter on a hit
-                profile["_source"] = "pattern_guess"
-                uname = (profile.get("username") or "").lower()
-                with lock:
-                    if uname not in seen_usernames and len(results) < limit:
-                        seen_usernames.add(uname)
-                        results.append(profile)
+
+            batch = list(range(n, min(n + BATCH_SIZE, MAX_N + 1)))
+            n    += BATCH_SIZE
+
+            batch_hits = 0
+            with ThreadPoolExecutor(max_workers=BATCH_SIZE) as pool:
+                futs = {pool.submit(fetch_profile, f"{base}-{i}"): i for i in batch}
+                for fut in as_completed(futs):
+                    profile = fut.result()
+                    if "error" not in profile:
+                        batch_hits += 1
+                        profile["_source"] = "pattern_guess"
+                        uname = (profile.get("username") or "").lower()
+                        with lock:
+                            if uname not in seen_usernames and len(results) < limit:
+                                seen_usernames.add(uname)
+                                results.append(profile)
+
+            if batch_hits == 0:
+                return      # entire window was empty — no point going further
 
     t1 = threading.Thread(target=ddg_worker)
     t2 = threading.Thread(target=pattern_worker)
