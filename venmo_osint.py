@@ -328,12 +328,7 @@ def username_patterns(first: str, last: str, top_only: bool = False) -> list[str
         for s in plain_suffixes:
             with_nums.append(f"{base}{s}")
 
-    # Dash-number suffixes — Venmo auto-generates First-Last-N when the base is taken
-    # e.g. Chris-Keefe-10, john-smith-3, etc.  Try 1-25 on the hyphenated base.
-    dash_base = f"{f}-{l}"
-    dash_nums = [f"{dash_base}-{n}" for n in range(1, 26)]
-
-    candidates = top if top_only else (extended + with_nums + dash_nums)
+    candidates = top if top_only else (extended + with_nums)
     seen = set()
     result = []
     for c in candidates:
@@ -389,10 +384,38 @@ def search_by_name(first: str, last: str, limit: int = 10) -> list[dict]:
                             seen_usernames.add(uname)
                             results.append(profile)
 
+    def dash_number_worker():
+        """
+        Probe First-Last-N sequentially (N = 1, 2, 3, …) and stop after
+        MAX_MISSES consecutive 404s. Handles any number, no hard ceiling.
+        """
+        MAX_MISSES = 3
+        MAX_N      = 200        # absolute safety cap
+        base       = f"{first.lower().strip()}-{last.lower().strip()}"
+        misses     = 0
+        for n in range(1, MAX_N + 1):
+            with lock:
+                if len(results) >= limit:
+                    return
+            profile = fetch_profile(f"{base}-{n}")
+            if "error" in profile:
+                misses += 1
+                if misses >= MAX_MISSES:
+                    return          # gap detected — stop scanning
+            else:
+                misses = 0          # reset gap counter on a hit
+                profile["_source"] = "pattern_guess"
+                uname = (profile.get("username") or "").lower()
+                with lock:
+                    if uname not in seen_usernames and len(results) < limit:
+                        seen_usernames.add(uname)
+                        results.append(profile)
+
     t1 = threading.Thread(target=ddg_worker)
     t2 = threading.Thread(target=pattern_worker)
-    t1.start(); t2.start()
-    t1.join(); t2.join()
+    t3 = threading.Thread(target=dash_number_worker)
+    t1.start(); t2.start(); t3.start()
+    t1.join(); t2.join(); t3.join()
 
     return results if results else [{"note": "No results found. Try a different spelling or add a session cookie for Venmo search."}]
 
