@@ -149,4 +149,12 @@ def api_cookie_clear():
     return jsonify({"ok": False, "error": "On Vercel, remove the VENMO_COOKIE environment variable in your project settings."})
 
 
+@app.route("/api/cookie/grab", methods=["POST"])
+def api_cookie_grab():
+    return jsonify({
+        "ok": False,
+        "error": "Grab from Browser is not available on the hosted Vercel version — it requires local machine access to your browser profile. Run the app locally with: python3 app.py"
+    })
+
+
 # Vercel calls the app as `app`
