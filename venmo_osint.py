@@ -43,14 +43,15 @@ def load_saved_cookie() -> Optional[str]:
     """Read cookie from ~/.venmo_osint if it exists."""
     if not CONFIG_PATH.exists():
         return None
-    cfg = configparser.ConfigParser()
+    cfg = configparser.RawConfigParser()
     cfg.read(CONFIG_PATH)
     return cfg.get("venmo", "cookie", fallback=None) or None
 
 
 def save_cookie(cookie: str):
     """Persist a cookie to ~/.venmo_osint."""
-    cfg = configparser.ConfigParser()
+    # RawConfigParser avoids treating % in cookie values as interpolation syntax
+    cfg = configparser.RawConfigParser()
     if CONFIG_PATH.exists():
         cfg.read(CONFIG_PATH)
     if "venmo" not in cfg:

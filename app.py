@@ -332,6 +332,51 @@ HTML = r"""<!DOCTYPE html>
   .source-pattern { background: rgba(0,212,170,.12);  color: var(--accent2); }
   .source-venmo   { background: rgba(0,141,255,.12);  color: var(--accent); }
 
+  /* ── permission modal ────────────────────────────────────── */
+  .modal-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 28px; max-width: 420px; width: 100%;
+    box-shadow: 0 24px 60px rgba(0,0,0,.6);
+    animation: modal-in .2s ease;
+  }
+  @keyframes modal-in {
+    from { opacity: 0; transform: scale(.95) translateY(8px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .modal-icon {
+    width: 48px; height: 48px; border-radius: 12px; margin-bottom: 16px;
+    background: rgba(0,141,255,.12); display: flex; align-items: center;
+    justify-content: center; color: var(--accent);
+  }
+  .modal-title { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+  .modal-body  { color: var(--muted); font-size: 13.5px; line-height: 1.6; margin-bottom: 20px; }
+  .modal-body strong { color: var(--text); }
+  .modal-permissions {
+    background: var(--surface); border-radius: 8px; padding: 12px 14px;
+    margin-bottom: 20px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .perm-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .perm-icon { color: var(--accent2); flex-shrink: 0; }
+  .modal-browser-row {
+    display: flex; gap: 8px; margin-bottom: 20px;
+  }
+  .browser-btn {
+    flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--muted); font-size: 12.5px;
+    font-weight: 600; cursor: pointer; transition: all .15s; text-align: center;
+  }
+  .browser-btn.selected { border-color: var(--accent); color: var(--accent); background: rgba(0,141,255,.1); }
+  .modal-save-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; font-size: 13px; color: var(--muted); }
+  .modal-save-row input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+  .modal-actions { display: flex; gap: 10px; }
+  .modal-actions .btn { flex: 1; justify-content: center; }
+
   /* ── misc ────────────────────────────────────────────────── */
   ::-webkit-scrollbar       { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -380,6 +425,58 @@ HTML = r"""<!DOCTYPE html>
       <div style="color:var(--muted);font-size:11px">Public data only</div>
     </div>
   </aside>
+
+  <!-- PERMISSION MODAL -->
+  <div class="modal-backdrop" id="grab-modal">
+    <div class="modal">
+      <div class="modal-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+      </div>
+      <div class="modal-title">Permission to read browser cookies</div>
+      <div class="modal-body">
+        This tool wants to read your <strong>Venmo session cookies</strong> from your local browser profile so you don't have to copy them manually.
+      </div>
+
+      <div class="modal-permissions">
+        <div class="perm-row">
+          <svg class="perm-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Read cookies for <strong style="color:var(--text);margin:0 4px">venmo.com</strong> only
+        </div>
+        <div class="perm-row">
+          <svg class="perm-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Runs entirely on your machine — nothing is sent externally
+        </div>
+        <div class="perm-row">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <span style="color:var(--muted)">Does not access passwords, history, or other sites</span>
+        </div>
+      </div>
+
+      <div class="modal-body" style="margin-bottom:12px;font-size:13px">Select your browser:</div>
+      <div class="modal-browser-row">
+        <button class="browser-btn selected" id="bb-chrome"  onclick="selectBrowser('chrome')">Chrome</button>
+        <button class="browser-btn"          id="bb-firefox" onclick="selectBrowser('firefox')">Firefox</button>
+        <button class="browser-btn"          id="bb-brave"   onclick="selectBrowser('brave')">Brave</button>
+      </div>
+
+      <label class="modal-save-row">
+        <input type="checkbox" id="grab-save" checked/>
+        Save cookie to <code style="font-size:11.5px;background:var(--surface);padding:1px 5px;border-radius:4px">~/.venmo_osint</code> for future runs
+      </label>
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeGrabModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmGrab()" id="grab-confirm-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          Allow &amp; Grab Cookie
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- BOTTOM NAV (mobile) -->
   <nav class="bottom-nav">
@@ -489,6 +586,19 @@ HTML = r"""<!DOCTYPE html>
             <div style="color:var(--muted);font-size:13px;margin-bottom:18px">
               Required for search. Profile lookup works without it.
             </div>
+            <button class="btn btn-primary" onclick="openGrabModal()" style="width:100%;justify-content:center;margin-bottom:16px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+              Grab from Browser
+            </button>
+
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+              <div style="flex:1;height:1px;background:var(--border)"></div>
+              <span style="color:var(--muted);font-size:11.5px;font-weight:600">OR PASTE MANUALLY</span>
+              <div style="flex:1;height:1px;background:var(--border)"></div>
+            </div>
+
             <div class="field-label">Cookie string</div>
             <textarea id="cookie-input" placeholder='venmo_device_id=abc123; _venmoid=xyz789; ...'></textarea>
             <div class="cookie-actions">
@@ -760,6 +870,64 @@ async function clearCookie() {
   refreshBadge();
 }
 
+// ── grab-from-browser modal ───────────────────────────────────────────────────
+let _selectedBrowser = 'chrome';
+
+function openGrabModal() {
+  document.getElementById('grab-modal').classList.add('open');
+}
+function closeGrabModal() {
+  document.getElementById('grab-modal').classList.remove('open');
+}
+function selectBrowser(b) {
+  _selectedBrowser = b;
+  ['chrome','firefox','brave'].forEach(n => {
+    document.getElementById('bb-' + n).classList.toggle('selected', n === b);
+  });
+}
+
+async function confirmGrab() {
+  const btn  = document.getElementById('grab-confirm-btn');
+  const save = document.getElementById('grab-save').checked;
+  const msg  = document.getElementById('cookie-msg');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Grabbing…';
+
+  try {
+    const res  = await fetch('/api/cookie/grab', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ browser: _selectedBrowser, save }),
+    });
+    const data = await res.json();
+
+    closeGrabModal();
+
+    if (data.ok) {
+      msg.innerHTML = alertHtml('info',
+        `✓ Grabbed ${data.count} cookies from ${_selectedBrowser}` +
+        (data.saved ? ' and saved to ~/.venmo_osint.' : '.') +
+        ` Keys: ${data.keys.slice(0,4).join(', ')}…`
+      );
+      refreshBadge();
+    } else {
+      msg.innerHTML = alertHtml('error', data.error || 'Failed to grab cookie.');
+    }
+  } catch(e) {
+    closeGrabModal();
+    msg.innerHTML = alertHtml('error', 'Request failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Allow &amp; Grab Cookie`;
+  }
+}
+
+// close modal on backdrop click
+document.getElementById('grab-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeGrabModal();
+});
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -829,6 +997,42 @@ def api_cookie_save():
     save_cookie(cookie)
     apply_cookie(cookie)
     return jsonify({"ok": True})
+
+
+@app.route("/api/cookie/grab", methods=["POST"])
+def api_cookie_grab():
+    """Read Venmo cookies directly from the local Chrome profile."""
+    data = request.get_json(silent=True) or {}
+    browser = data.get("browser", "chrome").lower()
+    save = data.get("save", False)
+
+    try:
+        import browser_cookie3
+        if browser == "firefox":
+            jar = browser_cookie3.firefox(domain_name=".venmo.com")
+        else:
+            jar = browser_cookie3.chrome(domain_name=".venmo.com")
+
+        cookies = {c.name: c.value for c in jar}
+        if not cookies:
+            return jsonify({"ok": False, "error": f"No Venmo cookies found in {browser}. Make sure you're logged in to venmo.com."})
+
+        # Format as a Cookie header string
+        cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+        apply_cookie(cookie_str)
+        if save:
+            save_cookie(cookie_str)
+
+        return jsonify({
+            "ok": True,
+            "count": len(cookies),
+            "keys": list(cookies.keys()),
+            "saved": save,
+        })
+    except ImportError:
+        return jsonify({"ok": False, "error": "browser-cookie3 not installed. Run: pip3 install browser-cookie3"})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)})
 
 
 @app.route("/api/cookie/clear", methods=["POST"])
