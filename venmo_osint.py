@@ -321,14 +321,19 @@ def username_patterns(first: str, last: str, top_only: bool = False) -> list[str
         f"{f1}{l1}",      # js
     ]
 
-    # Number-suffix variants of the top patterns (catches john.smith1, johnsmith2, etc.)
-    suffixes = ["1", "2", "3", "123", "1234"]
+    # Number-suffix variants (catches johnsmith1, john.smith2, etc.)
+    plain_suffixes = ["1", "2", "3", "123", "1234"]
     with_nums = []
-    for base in top[:4]:          # only suffix the 4 most common bases
-        for s in suffixes:
+    for base in top[:4]:
+        for s in plain_suffixes:
             with_nums.append(f"{base}{s}")
 
-    candidates = top if top_only else (extended + with_nums)
+    # Dash-number suffixes — Venmo auto-generates First-Last-N when the base is taken
+    # e.g. Chris-Keefe-10, john-smith-3, etc.  Try 1-25 on the hyphenated base.
+    dash_base = f"{f}-{l}"
+    dash_nums = [f"{dash_base}-{n}" for n in range(1, 26)]
+
+    candidates = top if top_only else (extended + with_nums + dash_nums)
     seen = set()
     result = []
     for c in candidates:
@@ -373,7 +378,7 @@ def search_by_name(first: str, last: str, limit: int = 10) -> list[dict]:
 
     def pattern_worker():
         patterns = username_patterns(first, last, top_only=False)
-        with ThreadPoolExecutor(max_workers=8) as pool:
+        with ThreadPoolExecutor(max_workers=15) as pool:
             futures = {pool.submit(probe_pattern, p): p for p in patterns}
             for future in as_completed(futures):
                 profile = future.result()
