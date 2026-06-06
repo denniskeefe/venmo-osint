@@ -75,6 +75,24 @@ def search_by_name_serverless(first: str, last: str, limit: int = 8) -> list[dic
     return results or [{"note": "No results found. Try a different spelling or add VENMO_COOKIE in Vercel env vars."}]
 
 
+# ── Global error handlers ─────────────────────────────────────────────────────
+
+import traceback
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    if request.path.startswith("/api/"):
+        tb = traceback.format_exc()
+        return jsonify({"error": f"{type(e).__name__}: {e}", "trace": tb[-800:]}), 500
+    raise e
+
+@app.errorhandler(404)
+def handle_404(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Not found"}), 404
+    return render_template_string(HTML)
+
+
 # ── routes ────────────────────────────────────────────────────────────────────
 
 # Serve the same HTML from app.py (import it)

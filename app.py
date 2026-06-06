@@ -955,6 +955,31 @@ function makePlaceholder() {
 """
 
 
+# ── Global error handlers (ensure /api/* always returns JSON) ─────────────────
+
+import traceback
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    if request.path.startswith("/api/"):
+        tb = traceback.format_exc()
+        app.logger.error("Unhandled exception on %s:\n%s", request.path, tb)
+        return jsonify({"error": f"Internal server error: {type(e).__name__}: {e}"}), 500
+    raise e
+
+@app.errorhandler(404)
+def handle_404(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Not found"}), 404
+    return render_template_string(HTML)
+
+@app.errorhandler(405)
+def handle_405(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Method not allowed"}), 405
+    raise e
+
+
 # ── API routes ────────────────────────────────────────────────────────────────
 
 @app.route("/")
