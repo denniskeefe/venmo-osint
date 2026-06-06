@@ -165,7 +165,13 @@ def _fetch_api_profile(username: str) -> dict:
         return {"error": str(exc)}
 
     if resp.status_code == 404:
+        # Real 404 = JSON body; HTML body = rate-limited / IP blocked
+        ct = resp.headers.get("content-type", "")
+        if "html" in ct or resp.text.strip().startswith("<"):
+            return {"error": "rate_limited"}
         return {"error": f"User '{username}' not found (404)"}
+    if resp.status_code == 429:
+        return {"error": "rate_limited"}
     if resp.status_code != 200:
         return {"error": f"API HTTP {resp.status_code}"}
 
@@ -431,7 +437,15 @@ def search_by_name(first: str, last: str, limit: int = 10) -> list[dict]:
     t1.start(); t2.start(); t3.start()
     t1.join(); t2.join(); t3.join()
 
-    return results if results else [{"note": "No results found. Try a different spelling or add a session cookie for Venmo search."}]
+    if results:
+        return results
+
+    # Check if we were rate-limited rather than just no matches
+    probe = _fetch_api_profile("venmo")
+    if probe.get("error") == "rate_limited":
+        return [{"error": "Venmo is rate-limiting this IP — please wait a few minutes and try again."}]
+
+    return [{"note": "No results found. Try a different spelling or add a session cookie for Venmo search."}]
 
 
 def _ddg_name_search(first: str, last: str, limit: int) -> list[dict]:
