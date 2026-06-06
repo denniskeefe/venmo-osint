@@ -377,6 +377,18 @@ HTML = r"""<!DOCTYPE html>
   .modal-actions { display: flex; gap: 10px; }
   .modal-actions .btn { flex: 1; justify-content: center; }
 
+  /* ── export bar ─────────────────────────────────────────── */
+  .export-bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-top: 4px; padding: 10px 14px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .export-btn {
+    padding: 6px 14px; font-size: 12px; gap: 5px;
+  }
+  .export-btn.copied { border-color: var(--accent2); color: var(--accent2); }
+
   /* ── misc ────────────────────────────────────────────────── */
   ::-webkit-scrollbar       { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -709,6 +721,7 @@ async function lookupProfile() {
   try {
     const res  = await fetch('/api/profile/' + encodeURIComponent(username));
     const data = await res.json();
+    _lastProfile = data;
     out.innerHTML = renderProfile(data);
   } catch(e) {
     out.innerHTML = alertHtml('error', 'Request failed: ' + e.message);
@@ -717,6 +730,8 @@ async function lookupProfile() {
     btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Look Up`;
   }
 }
+
+let _lastProfile = null;
 
 function renderProfile(p) {
   if (p.error) return alertHtml('error', p.error);
@@ -760,7 +775,7 @@ function renderProfile(p) {
     <div class="card">
       <div class="card-header">
         ${avatar}
-        <div>
+        <div style="flex:1;min-width:0">
           <div class="profile-name">${esc(p.display_name || p.username)}</div>
           <div class="profile-handle">@${esc(p.username)}</div>
           ${p.bio ? `<div class="profile-bio">${esc(p.bio)}</div>` : ''}
@@ -768,6 +783,37 @@ function renderProfile(p) {
       </div>
       <div class="meta-grid">${metas}</div>
       ${txnBlock}
+    </div>
+    <div class="export-bar">
+      <span style="color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.04em">EXPORT</span>
+      <button class="btn btn-ghost export-btn" onclick="exportJSON()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        JSON
+      </button>
+      <button class="btn btn-ghost export-btn" onclick="exportTXT()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        TXT
+      </button>
+      <button class="btn btn-ghost export-btn" onclick="exportCSV()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        CSV
+      </button>
+      <button class="btn btn-ghost export-btn" onclick="copyClipboard()" id="copy-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        Copy
+      </button>
     </div>`;
 }
 
@@ -955,6 +1001,102 @@ async function confirmGrab() {
 document.getElementById('grab-modal').addEventListener('click', function(e) {
   if (e.target === this) closeGrabModal();
 });
+
+// ── export ───────────────────────────────────────────────────────────────────
+function _download(filename, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function _profileFilename(ext) {
+  const u = (_lastProfile && _lastProfile.username) || 'profile';
+  return `venmo_${u}_${new Date().toISOString().slice(0,10)}.${ext}`;
+}
+
+function exportJSON() {
+  if (!_lastProfile) return;
+  _download(_profileFilename('json'), JSON.stringify(_lastProfile, null, 2), 'application/json');
+}
+
+function exportTXT() {
+  if (!_lastProfile) return;
+  const p = _lastProfile;
+  const lines = [
+    '='.repeat(55),
+    `  Venmo Profile: @${p.username || ''}`,
+    '='.repeat(55),
+  ];
+  const fields = [
+    ['Display name',  p.display_name],
+    ['First name',    p.first_name],
+    ['Last name',     p.last_name],
+    ['User ID',       p.id],
+    ['Bio',           p.bio],
+    ['Account type',  p.identity_type || (p.is_business ? 'Business' : null)],
+    ['Active',        p.is_active === false ? 'No (deactivated)' : null],
+    ['Member since',  p.date_joined],
+    ['Friend count',  p.friend_count != null ? p.friend_count : null],
+    ['Profile URL',   p.profile_url],
+    ['Avatar URL',    p.profile_picture_url],
+  ];
+  for (const [label, val] of fields) {
+    if (val != null && val !== '') lines.push(`  ${label.padEnd(20)} ${val}`);
+  }
+  const txns = p.recent_transactions || [];
+  if (txns.length) {
+    lines.push('', `  Recent transactions (${txns.length}):`);
+    for (const t of txns) {
+      const d = (t.date || '').slice(0, 10);
+      lines.push(`    [${d}] ${t.actor || '?'} ${t.type || 'paid'} ${t.target || '?'}: "${t.note || ''}"`);
+    }
+  }
+  lines.push('', `  Exported: ${new Date().toISOString()}`, '');
+  _download(_profileFilename('txt'), lines.join('\n'), 'text/plain');
+}
+
+function exportCSV() {
+  if (!_lastProfile) return;
+  const p = _lastProfile;
+  const rows = [
+    ['field', 'value'],
+    ['username',      p.username],
+    ['display_name',  p.display_name],
+    ['first_name',    p.first_name],
+    ['last_name',     p.last_name],
+    ['id',            p.id],
+    ['bio',           p.bio],
+    ['identity_type', p.identity_type],
+    ['is_business',   p.is_business],
+    ['is_active',     p.is_active],
+    ['date_joined',   p.date_joined],
+    ['friend_count',  p.friend_count],
+    ['profile_url',   p.profile_url],
+    ['profile_picture_url', p.profile_picture_url],
+    ['exported_at',   new Date().toISOString()],
+  ];
+  // append transactions as extra rows
+  (p.recent_transactions || []).forEach((t, i) => {
+    rows.push([`txn_${i+1}`, `${(t.date||'').slice(0,10)} | ${t.actor||''} ${t.type||'paid'} ${t.target||''} | "${t.note||''}"`]);
+  });
+  const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  _download(_profileFilename('csv'), csv, 'text/csv');
+}
+
+async function copyClipboard() {
+  if (!_lastProfile) return;
+  await navigator.clipboard.writeText(JSON.stringify(_lastProfile, null, 2));
+  const btn = document.getElementById('copy-btn');
+  if (!btn) return;
+  btn.classList.add('copied');
+  btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Copied!`;
+  setTimeout(() => {
+    btn.classList.remove('copied');
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
+  }, 2000);
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function esc(s) {
