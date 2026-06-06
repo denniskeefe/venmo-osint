@@ -702,11 +702,15 @@ function renderProfile(p) {
     : `<div class="avatar-placeholder">👤</div>`;
 
   const metas = [
-    { label:'User ID',       value: p.id || '—' },
-    { label:'Friend count',  value: p.friend_count != null ? p.friend_count : '—' },
-    { label:'Business',      value: p.is_business ? 'Yes' : (p.is_business === false ? 'No' : '—') },
-    { label:'Profile URL',   value: `<a href="${esc(p.profile_url)}" target="_blank">${esc(p.profile_url)}</a>` },
-  ].map(m => `
+    { label:'User ID',        value: p.id || '—' },
+    { label:'First name',     value: p.first_name || null },
+    { label:'Last name',      value: p.last_name  || null },
+    { label:'Friend count',   value: p.friend_count != null ? p.friend_count : null },
+    { label:'Member since',   value: p.date_joined || null },
+    { label:'Account type',   value: p.identity_type || (p.is_business ? 'Business' : null) },
+    { label:'Active',         value: p.is_active === false ? 'No (deactivated)' : null },
+    { label:'Profile URL',    value: `<a href="${esc(p.profile_url)}" target="_blank">${esc(p.profile_url)}</a>` },
+  ].filter(m => m.value).map(m => `
     <div class="meta-item">
       <div class="meta-label">${m.label}</div>
       <div class="meta-value">${m.value}</div>

@@ -119,7 +119,82 @@ def apply_cookie(cookie_str: str):
 # ---------------------------------------------------------------------------
 
 def fetch_profile(username: str) -> dict:
-    """Fetch public profile data for a Venmo username."""
+    """
+    Fetch public profile data for a Venmo username.
+
+    Strategy (in order):
+      1. api.venmo.com/v1/users/<username>  — always reliable, no auth needed
+      2. account.venmo.com/u/<username>     — richer (transactions) when a
+                                              session cookie is present; also
+                                              used to merge extra fields
+    """
+    username = username.strip().lstrip("@")
+
+    # ── Strategy 1: public REST API (always available, no cookie needed) ──────
+    base = _fetch_api_profile(username)
+    if "error" in base and "404" in base["error"]:
+        return base  # definitive not-found, stop here
+
+    # ── Strategy 2: scrape account page for transactions + extra fields ───────
+    scraped = _fetch_scraped_profile(username)
+
+    if "error" not in base:
+        # Merge: prefer API for identity fields, scrape for transactions/bio
+        if "error" not in scraped:
+            base["bio"]                = scraped.get("bio") or base.get("bio")
+            base["is_business"]        = scraped.get("is_business") or base.get("is_business")
+            base["recent_transactions"]= scraped.get("recent_transactions", [])
+        return base
+
+    # API failed (rate-limited?) — fall back to scrape-only
+    return scraped
+
+
+def _fetch_api_profile(username: str) -> dict:
+    """Call api.venmo.com/v1/users/<username> — no auth needed for public data."""
+    try:
+        resp = SESSION.get(
+            f"https://api.venmo.com/v1/users/{username}",
+            timeout=12,
+        )
+    except requests.RequestException as exc:
+        return {"error": str(exc)}
+
+    if resp.status_code == 404:
+        return {"error": f"User '{username}' not found (404)"}
+    if resp.status_code != 200:
+        return {"error": f"API HTTP {resp.status_code}"}
+
+    try:
+        u = resp.json().get("data", {})
+        if not u:
+            return {"error": "Empty API response"}
+
+        # Detect business vs personal
+        identity = u.get("identity_type", "")
+        is_business = "business" in identity.lower() if identity else None
+
+        return {
+            "username":            u.get("username") or username,
+            "display_name":        u.get("display_name"),
+            "first_name":          u.get("first_name"),
+            "last_name":           u.get("last_name", "").strip() or None,
+            "id":                  u.get("id"),
+            "profile_picture_url": u.get("profile_picture_url"),
+            "bio":                 u.get("about") or u.get("description"),
+            "is_business":         is_business,
+            "identity_type":       identity or None,
+            "date_joined":         u.get("date_joined"),
+            "friend_count":        None,   # not in API response
+            "profile_url":         f"https://venmo.com/{u.get('username') or username}",
+            "recent_transactions": [],
+        }
+    except (json.JSONDecodeError, KeyError, AttributeError) as exc:
+        return {"error": f"API parse error: {exc}"}
+
+
+def _fetch_scraped_profile(username: str) -> dict:
+    """Scrape account.venmo.com for friend count, transactions, and bio."""
     url = f"https://account.venmo.com/u/{username}"
     try:
         resp = SESSION.get(url, timeout=15)
@@ -128,80 +203,77 @@ def fetch_profile(username: str) -> dict:
 
     if resp.status_code == 404:
         return {"error": f"User '{username}' not found (404)"}
+    if resp.status_code == 403:
+        return {"error": "Access denied (bot detection) — add a session cookie for reliable scraping"}
     if resp.status_code != 200:
-        return {"error": f"HTTP {resp.status_code} for {url}"}
+        return {"error": f"HTTP {resp.status_code}"}
 
     soup = BeautifulSoup(resp.text, "html.parser")
+    nd_tag = soup.find("script", id="__NEXT_DATA__")
+    if not nd_tag or not nd_tag.string:
+        return {"error": "Page loaded but __NEXT_DATA__ missing — Venmo may be rate-limiting this IP"}
 
-    next_data_tag = soup.find("script", id="__NEXT_DATA__")
-    if next_data_tag:
-        try:
-            next_data = json.loads(next_data_tag.string)
-            profile = _parse_next_data(next_data, username)
-            if profile:
-                return profile
-        except (json.JSONDecodeError, KeyError):
-            pass
-
-    return _parse_meta_tags(soup, username, url)
-
-
-def _parse_next_data(data: dict, username: str) -> Optional[dict]:
     try:
+        data  = json.loads(nd_tag.string)
         props = data["props"]["pageProps"]
-        user = (
-            props.get("profileData", {}).get("user")
-            or props.get("user")
-            or props.get("profileUser")
-        )
-        if not user:
-            return None
+    except (json.JSONDecodeError, KeyError):
+        return {"error": "Could not parse __NEXT_DATA__"}
 
-        transactions = []
-        feed = (
-            props.get("profileData", {}).get("transactions")
-            or props.get("transactions")
-            or []
-        )
-        for txn in feed[:10]:
-            payment = txn.get("payment") if isinstance(txn.get("payment"), dict) else {}
-            transactions.append({
-                "id": txn.get("id"),
-                "date": txn.get("datetime") or txn.get("date_created"),
-                "note": txn.get("note") or txn.get("message"),
-                "type": txn.get("type") or txn.get("action"),
-                "actor": _name(txn.get("actor")),
-                "target": _name(payment.get("target") or txn.get("target")),
-            })
+    user = (
+        props.get("profileData", {}).get("user")
+        or props.get("user")
+        or props.get("profileUser")
+    )
+    if not user:
+        return {"error": "Profile data not found in page (account may be private or require login)"}
 
-        return {
-            "username": user.get("username") or username,
-            "display_name": user.get("displayName") or user.get("name"),
-            "id": user.get("id"),
-            "profile_picture_url": user.get("profilePictureUrl") or user.get("picture"),
-            "bio": user.get("about") or user.get("description"),
-            "is_business": user.get("isBusiness"),
-            "friend_count": user.get("friendCount"),
-            "profile_url": f"https://venmo.com/{username}",
-            "recent_transactions": transactions,
-        }
-    except Exception:
-        return None
+    # Parse transactions
+    transactions = []
+    feed = (
+        props.get("profileData", {}).get("transactions")
+        or props.get("transactions")
+        or []
+    )
+    for txn in feed[:10]:
+        payment = txn.get("payment") if isinstance(txn.get("payment"), dict) else {}
+        transactions.append({
+            "id":     txn.get("id"),
+            "date":   txn.get("datetime") or txn.get("date_created"),
+            "note":   txn.get("note") or txn.get("message"),
+            "type":   txn.get("type") or txn.get("action"),
+            "actor":  _name(txn.get("actor")),
+            "target": _name(payment.get("target") or txn.get("target")),
+        })
 
-
-def _parse_meta_tags(soup: BeautifulSoup, username: str, url: str) -> dict:
-    def og(prop):
-        tag = soup.find("meta", property=f"og:{prop}") or soup.find("meta", attrs={"name": f"og:{prop}"})
-        return tag["content"] if tag and tag.get("content") else None
+    # Derive display name — new structure has firstName/lastName separately
+    display = (
+        user.get("displayName")
+        or user.get("name")
+        or f"{user.get('firstName','')} {user.get('lastName','').strip()}".strip()
+        or None
+    )
+    identity = user.get("identityType", "")
+    is_business = (
+        user.get("isBusiness")
+        or ("business" in (identity or "").lower())
+        or None
+    )
 
     return {
-        "username": username,
-        "display_name": og("title") or (soup.title.string if soup.title else username),
-        "bio": og("description"),
-        "profile_picture_url": og("image"),
-        "profile_url": url,
-        "recent_transactions": [],
-        "note": "Limited data — __NEXT_DATA__ not found; fell back to meta tags.",
+        "username":            user.get("username") or username,
+        "display_name":        display,
+        "first_name":          user.get("firstName"),
+        "last_name":           (user.get("lastName") or "").strip() or None,
+        "id":                  user.get("id"),
+        "profile_picture_url": user.get("profilePictureUrl") or user.get("picture"),
+        "bio":                 user.get("about") or user.get("description"),
+        "is_business":         is_business,
+        "identity_type":       identity or None,
+        "is_active":           user.get("isActive"),
+        "initials":            user.get("initials"),
+        "friend_count":        user.get("friendCount"),
+        "profile_url":         f"https://venmo.com/{user.get('username') or username}",
+        "recent_transactions": transactions,
     }
 
 
@@ -435,9 +507,13 @@ def print_profile(p: dict, fmt: str):
     print(f"  Venmo Profile: @{p.get('username', '?')}")
     print("=" * 60)
     _row("Display name",       p.get("display_name"))
+    _row("First name",         p.get("first_name"))
+    _row("Last name",          p.get("last_name"))
     _row("User ID",            p.get("id"))
     _row("Bio",                p.get("bio"))
-    _row("Business account",   p.get("is_business"))
+    _row("Account type",       p.get("identity_type") or ("Business" if p.get("is_business") else None))
+    _row("Active",             "No (deactivated)" if p.get("is_active") is False else None)
+    _row("Member since",       p.get("date_joined"))
     _row("Friend count",       p.get("friend_count"))
     _row("Profile URL",        p.get("profile_url"))
     _row("Avatar",             p.get("profile_picture_url"))
