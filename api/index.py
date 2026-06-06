@@ -19,19 +19,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, jsonify, request, render_template_string
 
-import requests
-from bs4 import BeautifulSoup
-from typing import Optional
 
-# ── re-import the pieces we need, with serverless-safe overrides ──────────────
 from venmo_osint import (
     SESSION,
     apply_cookie,
     fetch_profile,
     search_users,
-    username_patterns,
-    _ddg_name_search,
-    _extract_username_from_url,
+    search_by_name,
 )
 
 # Apply cookie from environment variable at cold-start
@@ -40,39 +34,6 @@ if _env_cookie:
     apply_cookie(_env_cookie)
 
 app = Flask(__name__)
-
-
-def search_by_name_serverless(first: str, last: str, limit: int = 8) -> list[dict]:
-    """
-    Serverless-safe name search: no threading, max 5 pattern probes.
-    DDG results come first, then top-N patterns to fill remaining slots.
-    """
-    results: list[dict] = []
-    seen: set[str] = set()
-
-    # Strategy 1: DuckDuckGo
-    for r in _ddg_name_search(first, last, limit):
-        u = (r.get("username") or "").lower()
-        if u and u not in seen:
-            seen.add(u)
-            results.append(r)
-
-    # Strategy 2: top-5 pattern probes (sequential, stays under timeout)
-    if len(results) < limit:
-        for pattern in username_patterns(first, last, top_only=True)[:5]:
-            if len(results) >= limit:
-                break
-            if pattern.lower() in seen:
-                continue
-            profile = fetch_profile(pattern)
-            if "error" not in profile:
-                display = (profile.get("display_name") or "").lower()
-                if first.lower() in display or last.lower() in display:
-                    seen.add(pattern.lower())
-                    profile["_source"] = "pattern_guess"
-                    results.append(profile)
-
-    return results or [{"note": "No results found. Try a different spelling or add VENMO_COOKIE in Vercel env vars."}]
 
 
 # ── Global error handlers ─────────────────────────────────────────────────────
@@ -116,10 +77,10 @@ def api_profile(username):
 def api_search_name():
     first = request.args.get("first", "").strip()
     last  = request.args.get("last",  "").strip()
-    limit = min(int(request.args.get("limit", 8)), 8)  # cap at 8 on Vercel
+    limit = min(int(request.args.get("limit", 20)), 50)
     if not first and not last:
         return jsonify([{"error": "Provide at least a first or last name"}])
-    return jsonify(search_by_name_serverless(first, last, limit=limit))
+    return jsonify(search_by_name(first, last, limit=limit))
 
 
 @app.route("/api/search")

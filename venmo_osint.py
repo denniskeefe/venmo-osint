@@ -384,7 +384,7 @@ def search_by_name(first: str, last: str, limit: int = 10) -> list[dict]:
                 if profile:
                     uname = (profile.get("username") or "").lower()
                     with lock:
-                        if uname not in seen_usernames and len(results) < limit:
+                        if uname and uname not in seen_usernames and len(results) < limit:
                             seen_usernames.add(uname)
                             results.append(profile)
 
@@ -418,7 +418,7 @@ def search_by_name(first: str, last: str, limit: int = 10) -> list[dict]:
                         profile["_source"] = "pattern_guess"
                         uname = (profile.get("username") or "").lower()
                         with lock:
-                            if uname not in seen_usernames and len(results) < limit:
+                            if uname and uname not in seen_usernames and len(results) < limit:
                                 seen_usernames.add(uname)
                                 results.append(profile)
 
