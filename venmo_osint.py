@@ -293,31 +293,42 @@ def username_patterns(first: str, last: str, top_only: bool = False) -> list[str
     """
     Generate likely Venmo username candidates from a first + last name.
     Returns a de-duplicated list preserving order.
-    If top_only=True, returns only the 6 highest-probability patterns (faster).
+    If top_only=True, returns only the highest-probability patterns (faster).
     """
-    f = first.lower().strip()
-    l = last.lower().strip()
+    f  = first.lower().strip()
+    l  = last.lower().strip()
     f1 = f[0] if f else ""
+    l1 = l[0] if l else ""
 
     # Ordered by real-world frequency on Venmo
     top = [
-        f"{f}{l}",        # johnsmith      ← most common
+        f"{f}{l}",        # johnsmith
         f"{f}.{l}",       # john.smith
         f"{f}_{l}",       # john_smith
         f"{f}-{l}",       # john-smith
         f"{f1}{l}",       # jsmith
-        f"{f}{l[0]}",     # johns
+        f"{f}{l1}",       # johns
     ]
+
     extended = top + [
         f"{l}{f}",        # smithjohn
         f"{l}.{f}",       # smith.john
         f"{l}_{f}",       # smith_john
+        f"{l}-{f}",       # smith-john
         f"{f}",           # john
         f"{l}",           # smith
         f"{f}{l[:3]}",    # johnsmi
+        f"{f1}{l1}",      # js
     ]
 
-    candidates = top if top_only else extended
+    # Number-suffix variants of the top patterns (catches john.smith1, johnsmith2, etc.)
+    suffixes = ["1", "2", "3", "123", "1234"]
+    with_nums = []
+    for base in top[:4]:          # only suffix the 4 most common bases
+        for s in suffixes:
+            with_nums.append(f"{base}{s}")
+
+    candidates = top if top_only else (extended + with_nums)
     seen = set()
     result = []
     for c in candidates:
@@ -353,19 +364,16 @@ def search_by_name(first: str, last: str, limit: int = 10) -> list[dict]:
                     results.append(r)
 
     def probe_pattern(pattern: str) -> Optional[dict]:
-        """Fetch one pattern and return profile if name matches, else None."""
+        """Fetch one pattern; return profile if the account exists, else None."""
         profile = fetch_profile(pattern)
         if "error" in profile:
             return None
-        display = (profile.get("display_name") or "").lower()
-        if first.lower() in display or last.lower() in display:
-            profile["_source"] = "pattern_guess"
-            return profile
-        return None
+        profile["_source"] = "pattern_guess"
+        return profile
 
     def pattern_worker():
-        patterns = username_patterns(first, last, top_only=True)
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        patterns = username_patterns(first, last, top_only=False)
+        with ThreadPoolExecutor(max_workers=8) as pool:
             futures = {pool.submit(probe_pattern, p): p for p in patterns}
             for future in as_completed(futures):
                 profile = future.result()

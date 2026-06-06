@@ -557,7 +557,7 @@ HTML = r"""<!DOCTYPE html>
                    onkeydown="if(event.key==='Enter') runSearch()"/>
             <input id="last-input"  placeholder="Last name"  style="flex:.9"
                    onkeydown="if(event.key==='Enter') runSearch()"/>
-            <input id="name-limit"  type="number" value="10" min="1" max="20"
+            <input id="name-limit"  type="number" value="20" min="1" max="50"
                    style="width:75px" placeholder="Limit"/>
             <button class="btn btn-primary" onclick="runSearch()" id="search-btn">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -576,7 +576,7 @@ HTML = r"""<!DOCTYPE html>
           <div class="search-row">
             <input id="search-input" placeholder="Username or keyword (cookie required for full results)"
                    onkeydown="if(event.key==='Enter') runSearch()"/>
-            <input id="search-limit" type="number" value="10" min="1" max="20"
+            <input id="search-limit" type="number" value="20" min="1" max="50"
                    style="width:75px" placeholder="Limit"/>
             <button class="btn btn-primary" onclick="runSearch()" id="search-btn-kw">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
