@@ -17,7 +17,8 @@ import sys
 # Make sure the project root is on the path so we can import venmo_osint
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, jsonify, request, render_template_string
+import requests
+from flask import Flask, Response, jsonify, request, render_template_string
 
 
 from venmo_osint import (
@@ -71,6 +72,29 @@ def index():
 @app.route("/api/profile/<username>")
 def api_profile(username):
     return jsonify(fetch_profile(username))
+
+
+@app.route("/api/image-proxy")
+def api_image_proxy():
+    url = request.args.get("url", "")
+    if not url:
+        return jsonify({"error": "Missing url"}), 400
+
+    allowed_hosts = ("pics-v3.venmo.com", "s3.amazonaws.com", "venmo.com")
+    if not any(h in url for h in allowed_hosts) or not url.startswith("https://"):
+        return jsonify({"error": "URL not allowed"}), 400
+
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 502
+
+    return Response(
+        resp.content,
+        mimetype=resp.headers.get("content-type", "image/jpeg"),
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.route("/api/search/name")

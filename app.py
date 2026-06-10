@@ -5,7 +5,8 @@ import json
 import threading
 import time
 import webbrowser
-from flask import Flask, jsonify, render_template_string, request
+import requests
+from flask import Flask, Response, jsonify, render_template_string, request
 
 from venmo_osint import (
     SESSION,
@@ -34,6 +35,7 @@ HTML = r"""<!DOCTYPE html>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Venmo OSINT</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   /* ── reset & base ─────────────────────────────────────────── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -807,6 +809,13 @@ function renderProfile(p) {
         </svg>
         CSV
       </button>
+      <button class="btn btn-ghost export-btn" onclick="exportPDF()" id="pdf-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        PDF
+      </button>
       <button class="btn btn-ghost export-btn" onclick="copyClipboard()" id="copy-btn">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -1085,6 +1094,192 @@ function exportCSV() {
   _download(_profileFilename('csv'), csv, 'text/csv');
 }
 
+// ── PDF export ───────────────────────────────────────────────────────────────
+async function _imageToDataURL(url) {
+  try {
+    const proxied = '/api/image-proxy?url=' + encodeURIComponent(url);
+    const res = await fetch(proxied);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+async function exportPDF() {
+  if (!_lastProfile) return;
+  const p = _lastProfile;
+  const btn = document.getElementById('pdf-btn');
+  const origHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Generating…';
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const pageWidth  = doc.internal.pageSize.getWidth();
+    const margin     = 40;
+    let   y          = 50;
+
+    // ── header bar ──────────────────────────────────────────────
+    doc.setFillColor(0, 13, 26);
+    doc.rect(0, 0, pageWidth, 70, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text('Venmo OSINT — Profile Report', margin, 35);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(180, 200, 220);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, margin, 52);
+
+    y = 100;
+
+    // ── avatar ──────────────────────────────────────────────────
+    let avatarSize = 0;
+    if (p.profile_picture_url) {
+      const dataUrl = await _imageToDataURL(p.profile_picture_url);
+      if (dataUrl) {
+        try {
+          avatarSize = 80;
+          doc.addImage(dataUrl, margin, y, avatarSize, avatarSize, undefined, 'FAST');
+        } catch (e) { avatarSize = 0; }
+      }
+    }
+
+    // ── name / handle / bio (to the right of avatar) ───────────
+    const textX = avatarSize ? margin + avatarSize + 16 : margin;
+    let ty = y + 18;
+    doc.setTextColor(20, 20, 30);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text(p.display_name || p.username || '—', textX, ty);
+    ty += 20;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(12);
+    doc.setTextColor(0, 141, 255);
+    doc.text(`@${p.username || '—'}`, textX, ty);
+    ty += 18;
+    if (p.bio) {
+      doc.setTextColor(100, 105, 120);
+      doc.setFontSize(10);
+      const bioLines = doc.splitTextToSize(p.bio, pageWidth - textX - margin);
+      doc.text(bioLines, textX, ty);
+      ty += bioLines.length * 12;
+    }
+
+    y = Math.max(y + avatarSize, ty) + 20;
+
+    // ── divider ──────────────────────────────────────────────────
+    doc.setDrawColor(220, 224, 232);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 24;
+
+    // ── field table ─────────────────────────────────────────────
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(20, 20, 30);
+    doc.text('Profile Details', margin, y);
+    y += 18;
+
+    const fields = [
+      ['Username',      p.username],
+      ['Display name',  p.display_name],
+      ['First name',    p.first_name],
+      ['Last name',     p.last_name],
+      ['User ID',       p.id],
+      ['Account type',  p.identity_type || (p.is_business ? 'Business' : (p.is_business === false ? 'Personal' : null))],
+      ['Active',        p.is_active === false ? 'No (deactivated)' : (p.is_active === true ? 'Yes' : null)],
+      ['Member since',  p.date_joined],
+      ['Friend count',  p.friend_count != null ? String(p.friend_count) : null],
+      ['Profile URL',   p.profile_url],
+      ['Avatar URL',    p.profile_picture_url],
+    ].filter(([, v]) => v != null && v !== '');
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    const labelW = 120;
+    for (const [label, value] of fields) {
+      if (y > 760) { doc.addPage(); y = 50; }
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(80, 85, 100);
+      doc.text(label, margin, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(20, 20, 30);
+      const valueLines = doc.splitTextToSize(String(value), pageWidth - margin - labelW - margin);
+      doc.text(valueLines, margin + labelW, y);
+      y += Math.max(16, valueLines.length * 14);
+    }
+
+    // ── transactions ─────────────────────────────────────────────
+    const txns = p.recent_transactions || [];
+    y += 14;
+    if (y > 740) { doc.addPage(); y = 50; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(20, 20, 30);
+    doc.text(`Recent Public Transactions (${txns.length})`, margin, y);
+    y += 18;
+
+    if (!txns.length) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(120, 125, 140);
+      doc.text('No public transactions visible.', margin, y);
+      y += 16;
+    } else {
+      doc.setFontSize(9);
+      for (const t of txns) {
+        if (y > 770) { doc.addPage(); y = 50; }
+        const date   = (t.date || '').slice(0, 10);
+        const actor  = t.actor  || '?';
+        const target = t.target || '?';
+        const action = t.type   || 'paid';
+        const note   = t.note   || '';
+
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(20, 20, 30);
+        doc.text(`${date}`, margin, y);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(60, 65, 80);
+        doc.text(`${actor}  ${action}  ${target}`, margin + 70, y);
+        y += 13;
+        if (note) {
+          doc.setTextColor(120, 125, 140);
+          const noteLines = doc.splitTextToSize(`"${note}"`, pageWidth - margin * 2 - 70);
+          doc.text(noteLines, margin + 70, y);
+          y += noteLines.length * 12;
+        }
+        y += 4;
+      }
+    }
+
+    // ── footer ──────────────────────────────────────────────────
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(160, 165, 180);
+      doc.text('Generated by Venmo OSINT — public data only', margin, 820);
+      doc.text(`Page ${i} of ${pageCount}`, pageWidth - margin - 60, 820);
+    }
+
+    doc.save(_profileFilename('pdf'));
+  } catch (e) {
+    alert('PDF export failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  }
+}
+
 async function copyClipboard() {
   if (!_lastProfile) return;
   await navigator.clipboard.writeText(JSON.stringify(_lastProfile, null, 2));
@@ -1156,6 +1351,34 @@ def index():
 @app.route("/api/profile/<username>")
 def api_profile(username):
     return jsonify(fetch_profile(username))
+
+
+@app.route("/api/image-proxy")
+def api_image_proxy():
+    """
+    Proxy a Venmo profile picture so the browser can embed it in a
+    PDF/canvas without hitting CORS restrictions on pics-v3.venmo.com.
+    Only allows venmo.com / venmo CDN image URLs.
+    """
+    url = request.args.get("url", "")
+    if not url:
+        return jsonify({"error": "Missing url"}), 400
+
+    allowed_hosts = ("pics-v3.venmo.com", "s3.amazonaws.com", "venmo.com")
+    if not any(h in url for h in allowed_hosts) or not url.startswith("https://"):
+        return jsonify({"error": "URL not allowed"}), 400
+
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        return jsonify({"error": str(exc)}), 502
+
+    return Response(
+        resp.content,
+        mimetype=resp.headers.get("content-type", "image/jpeg"),
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.route("/api/search/name")
