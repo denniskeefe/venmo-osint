@@ -128,11 +128,34 @@ To use a session cookie on Vercel: add `VENMO_COOKIE` as an environment variable
 
 ## Rate Limiting
 
-Venmo throttles IPs that make many requests in a short window. If you see:
+Venmo throttles IPs that make many requests in a short window (HTTP `429`, or
+stub `404` pages from `account.venmo.com`). If you see:
 
-> *Venmo is rate-limiting this IP — please wait a few minutes and try again.*
+> *Venmo is rate-limiting this IP — wait a few minutes and try again.*
 
-Wait 15–30 minutes before retrying. To avoid triggering the limit, test with single profile lookups before running name searches.
+…or…
+
+> *Couldn't load this profile — Venmo returned no data (possibly rate-limited, or the user doesn't exist).*
+
+then back off. When throttled, Venmo returns an empty stub page that looks
+identical for a real user and a nonexistent one, so a "not found" during heavy
+use is often just the rate limit — not a missing account.
+
+**Recommendations to avoid getting throttled:**
+
+- **Prefer direct profile lookups** (one request) over name search when you
+  already know the username.
+- **Use name search sparingly.** Each name search fires 50+ concurrent probes
+  (34 username patterns + sequential `First-Last-N` batches), which is the
+  single biggest trigger for rate limiting.
+- **Space out requests.** Avoid rapid, repeated lookups of the same profile.
+- **If you get blocked, wait 20–30 minutes** before retrying. Hammering the
+  endpoint resets the cooldown.
+- The public REST API (`api.venmo.com`) and the profile page
+  (`account.venmo.com`) are throttled independently — standard-username
+  lookups may still work via the API even when the page scrape is blocked,
+  but `First-Last-N` usernames depend on the page scrape and will fail until
+  the limit clears.
 
 ---
 
