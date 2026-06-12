@@ -143,6 +143,8 @@ def fetch_profile(username: str) -> dict:
             base["bio"]                = scraped.get("bio") or base.get("bio")
             base["is_business"]        = scraped.get("is_business") or base.get("is_business")
             base["recent_transactions"]= scraped.get("recent_transactions", [])
+            base["transactions_note"]  = scraped.get("transactions_note")
+            base["friend_count"]       = scraped.get("friend_count", base.get("friend_count"))
         return base
 
     if "error" not in scraped:
@@ -237,14 +239,17 @@ def _fetch_scraped_profile(username: str) -> dict:
     if not user:
         return {"error": "Profile data not found in page (account may be private or require login)"}
 
-    # Parse transactions
+    # ── Transactions ─────────────────────────────────────────────────────────
+    # Newer Venmo no longer embeds the feed in __NEXT_DATA__; it is fetched
+    # client-side from the authenticated stories API. Try the embedded feed
+    # first (older accounts), then fall back to the stories endpoint.
     transactions = []
     feed = (
         props.get("profileData", {}).get("transactions")
         or props.get("transactions")
         or []
     )
-    for txn in feed[:10]:
+    for txn in feed[:15]:
         payment = txn.get("payment") if isinstance(txn.get("payment"), dict) else {}
         transactions.append({
             "id":     txn.get("id"),
@@ -254,6 +259,19 @@ def _fetch_scraped_profile(username: str) -> dict:
             "actor":  _name(txn.get("actor")),
             "target": _name(payment.get("target") or txn.get("target")),
         })
+
+    txn_note = None
+    if not transactions and user.get("id"):
+        transactions, auth_required = _fetch_user_stories(
+            user_id=user["id"],
+            csrf=props.get("csrfToken"),
+            referer=url,
+        )
+        if auth_required:
+            txn_note = (
+                "Transactions require a valid Venmo session cookie. "
+                "Add or refresh your cookie in the Cookie / Auth tab to view them."
+            )
 
     # Derive display name — new structure has firstName/lastName separately
     display = (
@@ -284,6 +302,7 @@ def _fetch_scraped_profile(username: str) -> dict:
         "friend_count":        user.get("friendCount"),
         "profile_url":         f"https://venmo.com/{user.get('username') or username}",
         "recent_transactions": transactions,
+        "transactions_note":   txn_note,
     }
 
 
@@ -293,6 +312,82 @@ def _name(obj) -> Optional[str]:
     if isinstance(obj, dict):
         return obj.get("displayName") or obj.get("name") or obj.get("username")
     return str(obj)
+
+
+def _fetch_user_stories(user_id: str, csrf: Optional[str], referer: str) -> tuple[list[dict], bool]:
+    """
+    Fetch a user's public transaction feed from Venmo's stories API.
+
+    Returns (transactions, auth_required). This endpoint requires a valid
+    session cookie; without one it returns 401, in which case we return
+    ([], True) so the caller can prompt the user to add a cookie.
+    """
+    api = f"https://account.venmo.com/api/stories?feedType=user&externalId={user_id}"
+    headers = {
+        "Accept": "application/json",
+        "Referer": referer,
+        "Origin": "https://account.venmo.com",
+    }
+    if csrf:
+        headers["xsrf-token"] = csrf
+        headers["csrf-token"] = csrf
+
+    try:
+        resp = SESSION.get(api, headers=headers, timeout=15)
+    except requests.RequestException:
+        return [], False
+
+    if resp.status_code in (401, 403):
+        return [], True       # session cookie missing or expired
+    if resp.status_code != 200:
+        return [], False      # 404/other — genuinely no feed
+
+    try:
+        payload = resp.json()
+    except json.JSONDecodeError:
+        return [], False
+
+    # The feed may be under "stories", "data", or be a bare list.
+    stories = (
+        payload.get("stories")
+        or payload.get("data")
+        or (payload if isinstance(payload, list) else [])
+    )
+    return [_parse_story(s) for s in stories[:15] if isinstance(s, dict)], False
+
+
+def _parse_story(s: dict) -> dict:
+    """Normalize a single Venmo 'story' object into our transaction shape."""
+    title = s.get("title") if isinstance(s.get("title"), dict) else {}
+
+    # Actor / target can live in several places depending on API version
+    actor = (
+        _name(title.get("sender"))
+        or _name(s.get("actor"))
+        or _name(s.get("sender"))
+    )
+    target = (
+        _name(title.get("receiver"))
+        or _name(s.get("target"))
+        or _name(s.get("receiver"))
+    )
+
+    # Note text
+    note_obj = s.get("note")
+    if isinstance(note_obj, dict):
+        note = note_obj.get("content") or note_obj.get("text")
+    else:
+        note = note_obj
+    note = note or _name(s.get("subtitle")) or s.get("message")
+
+    return {
+        "id":     s.get("id"),
+        "date":   s.get("date") or s.get("datetime") or s.get("created_time"),
+        "note":   note,
+        "type":   s.get("type") or title.get("action") or s.get("action") or "paid",
+        "actor":  actor,
+        "target": target,
+    }
 
 
 # ---------------------------------------------------------------------------

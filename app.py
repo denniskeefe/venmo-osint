@@ -766,9 +766,14 @@ function renderProfile(p) {
       <span class="txn-note">"${esc(t.note || '')}"</span>
     </div>`).join('');
 
-  const txnBlock = txns
-    ? `<div class="txn-title">Recent public transactions</div><div class="txn-list">${txns}</div>`
-    : `<div style="color:var(--muted);font-size:13px">No public transactions visible.</div>`;
+  let txnBlock;
+  if (txns) {
+    txnBlock = `<div class="txn-title">Recent public transactions</div><div class="txn-list">${txns}</div>`;
+  } else if (p.transactions_note) {
+    txnBlock = `<div class="txn-title">Recent public transactions</div>${alertHtml('warn', p.transactions_note)}`;
+  } else {
+    txnBlock = `<div style="color:var(--muted);font-size:13px">No public transactions visible.</div>`;
+  }
 
   const noteBlock = p.note ? alertHtml('warn', p.note) : '';
 
