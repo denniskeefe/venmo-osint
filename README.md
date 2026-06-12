@@ -8,12 +8,12 @@ Live demo: [venmo-osint.vercel.app](https://venmo-osint.vercel.app)
 
 ## Features
 
-- **Profile lookup** — username, display name, first/last name, user ID, bio, account type, member since, avatar
+- **Profile lookup** — username, display name, first/last name, user ID, bio, account type, member since, friend count, avatar
 - **Name search** — find accounts by first + last name using DuckDuckGo indexing + 34 username pattern probes (including `First-Last-N` auto-generated variants up to any number)
 - **Keyword/username search** — search Venmo's user index
-- **Recent transactions** — public transaction feed per profile
-- **Export** — download results as JSON, TXT, or CSV, or copy to clipboard
-- **Session cookie support** — paste or auto-grab your Venmo cookie to unlock richer data
+- **Public transactions** — pulls a profile's recent public payment feed (who paid whom, note, date, direction) from Venmo's stories API. **Requires a valid session cookie.**
+- **Export** — download results as JSON, TXT, CSV, or a structured PDF (with embedded profile photo), or copy to clipboard
+- **Session cookie support** — paste or auto-grab your Venmo cookie to unlock transactions and keyword search
 - **Mobile-friendly** — bottom nav bar, stacked inputs, responsive layout
 - **Hosted + local** — deploy to Vercel or run locally
 
@@ -86,6 +86,16 @@ Runs three strategies concurrently:
 
 ---
 
+## Public Transactions
+
+Each profile lookup attempts to pull the account's recent **public** payment feed — actor, target, note, date, and direction (paid vs. charged).
+
+- Source: `api.venmo.com/v1/stories/target-or-actor/<user_id>`
+- **Requires a valid session cookie.** Venmo removed the global public feed in 2021; viewing even public transactions now requires being logged in. Without a cookie (or with an expired one), the tool shows a prompt to add/refresh your cookie rather than a misleading "no transactions" message.
+- Only data the target has marked **public** is returned; private transactions are never accessible.
+
+---
+
 ## Export
 
 After a profile lookup, an export bar appears below the result:
@@ -95,9 +105,10 @@ After a profile lookup, an export bar appears below the result:
 | **JSON** | Full raw data object |
 | **TXT** | Human-readable report with all fields and transactions |
 | **CSV** | Spreadsheet-ready rows, one per field + one per transaction |
+| **PDF** | Structured report with embedded profile photo, field table, and transaction list |
 | **Copy** | JSON to clipboard |
 
-Files are named `venmo_<username>_<date>.<ext>`.
+Files are named `venmo_<username>_<date>.<ext>`. PDF and photo embedding use a same-origin image proxy (`/api/image-proxy`) to avoid browser CORS restrictions on Venmo's CDN.
 
 ---
 
