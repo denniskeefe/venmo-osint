@@ -151,9 +151,24 @@ def fetch_profile(username: str) -> dict:
         # API failed (404 or rate-limited) but scrape worked — use scrape only
         return scraped
 
-    # Both failed — return whichever error is more informative
+    # Both failed — produce the most accurate message we can.
+    base_err    = base.get("error", "")
+    scraped_err = scraped.get("error", "")
+
+    if "rate_limited" in (base_err, scraped_err):
+        return {"error": "Venmo is rate-limiting this IP — wait a few minutes and try again."}
+
+    if scraped_err == "no_profile_data":
+        # account.venmo.com returned a stub page. If the API gave a clean
+        # JSON 404, the user likely doesn't exist; otherwise it's ambiguous
+        # (often throttling). Report honestly.
+        if "not found" in base_err:
+            return {"error": f"User '{username}' not found (404)"}
+        return {"error": "Couldn't load this profile — Venmo returned no data "
+                         "(possibly rate-limited, or the user doesn't exist). Try again shortly."}
+
     # Prefer a hard 404 from scrape over a generic API error
-    return scraped if "404" in scraped.get("error", "") else base
+    return scraped if "404" in scraped_err else base
 
 
 def _fetch_api_profile(username: str) -> dict:
@@ -213,17 +228,15 @@ def _fetch_scraped_profile(username: str) -> dict:
     except requests.RequestException as exc:
         return {"error": str(exc)}
 
-    if resp.status_code == 404:
-        return {"error": f"User '{username}' not found (404)"}
     if resp.status_code == 403:
         return {"error": "Access denied (bot detection) — add a session cookie for reliable scraping"}
-    if resp.status_code != 200:
+    if resp.status_code not in (200, 404):
         return {"error": f"HTTP {resp.status_code}"}
 
     soup = BeautifulSoup(resp.text, "html.parser")
     nd_tag = soup.find("script", id="__NEXT_DATA__")
     if not nd_tag or not nd_tag.string:
-        return {"error": "Page loaded but __NEXT_DATA__ missing — Venmo may be rate-limiting this IP"}
+        return {"error": "rate_limited"}
 
     try:
         data  = json.loads(nd_tag.string)
@@ -238,6 +251,11 @@ def _fetch_scraped_profile(username: str) -> dict:
         or props.get("profileUser")
     )
     if not user:
+        # Empty pageProps (only _nextI18Next) means Venmo served a stub page —
+        # either the user genuinely doesn't exist or this IP is being throttled.
+        # We can't tell them apart, so report it honestly.
+        if set(props.keys()) <= {"_nextI18Next"}:
+            return {"error": "no_profile_data"}
         return {"error": "Profile data not found in page (account may be private or require login)"}
 
     # ── Transactions ─────────────────────────────────────────────────────────
