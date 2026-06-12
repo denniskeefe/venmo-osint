@@ -22,9 +22,9 @@ from flask import Flask, Response, jsonify, request, render_template_string
 
 
 from venmo_osint import (
-    SESSION,
     apply_cookie,
     fetch_profile,
+    has_auth_cookie,
     search_users,
     search_by_name,
 )
@@ -118,8 +118,8 @@ def api_search():
 
 @app.route("/api/cookie/status")
 def api_cookie_status():
-    has_cookie = bool(_env_cookie or SESSION.cookies)
-    source = "VENMO_COOKIE env var" if _env_cookie else ("session" if SESSION.cookies else "not set")
+    has_cookie = bool(_env_cookie) or has_auth_cookie()
+    source = "VENMO_COOKIE env var" if _env_cookie else ("session" if has_auth_cookie() else "not set")
     return jsonify({"active": has_cookie, "detail": source})
 
 

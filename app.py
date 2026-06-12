@@ -12,8 +12,10 @@ from venmo_osint import (
     SESSION,
     apply_cookie,
     clear_cookie,
+    clear_session_cookies,
     cookie_status,
     fetch_profile,
+    has_auth_cookie,
     load_saved_cookie,
     resolve_cookie,
     save_cookie,
@@ -1478,7 +1480,7 @@ def api_cookie_grab():
 @app.route("/api/cookie/clear", methods=["POST"])
 def api_cookie_clear():
     clear_cookie()
-    SESSION.cookies.clear()
+    clear_session_cookies()
     return jsonify({"ok": True})
 
 

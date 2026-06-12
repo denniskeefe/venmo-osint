@@ -104,14 +104,31 @@ HEADERS = {
 SESSION = requests.Session()
 SESSION.headers.update(HEADERS)
 
+# The session cookie is stored here and sent ONLY to endpoints that need
+# authentication (the transactions/stories API). It is deliberately NOT
+# attached to SESSION, because Venmo rate-limits/flags requests carrying a
+# throttled or expired cookie — which would poison the unauthenticated
+# profile lookups that work fine without any cookie.
+_AUTH_COOKIES: dict[str, str] = {}
+
 
 def apply_cookie(cookie_str: str):
-    """Parse a raw Cookie header string and inject it into the session."""
+    """Parse a raw Cookie header string and store it for authenticated calls."""
+    _AUTH_COOKIES.clear()
     for pair in cookie_str.split(";"):
         pair = pair.strip()
         if "=" in pair:
             name, _, value = pair.partition("=")
-            SESSION.cookies.set(name.strip(), value.strip(), domain=".venmo.com")
+            _AUTH_COOKIES[name.strip()] = value.strip()
+
+
+def clear_session_cookies():
+    """Drop the in-memory auth cookie (used by the web UI's Clear button)."""
+    _AUTH_COOKIES.clear()
+
+
+def has_auth_cookie() -> bool:
+    return bool(_AUTH_COOKIES)
 
 
 # ---------------------------------------------------------------------------
@@ -341,17 +358,23 @@ def _fetch_user_stories(user_id: str, referer: str = "https://account.venmo.com/
     Returns (transactions, auth_required). This endpoint requires a valid
     session cookie; without one it returns 401, in which case we return
     ([], True) so the caller can prompt the user to add a cookie.
+
+    The cookie is sent ONLY on this request (not on profile lookups), so a
+    flagged/expired cookie can't break the rest of the tool.
     """
+    if not _AUTH_COOKIES:
+        return [], True       # no cookie at all — transactions need one
+
     api = f"https://api.venmo.com/v1/stories/target-or-actor/{user_id}"
     headers = {"Accept": "application/json", "Referer": referer}
 
     try:
-        resp = SESSION.get(api, headers=headers, timeout=15)
+        resp = SESSION.get(api, headers=headers, cookies=_AUTH_COOKIES, timeout=15)
     except requests.RequestException:
         return [], False
 
-    if resp.status_code in (401, 403):
-        return [], True       # session cookie missing or expired
+    if resp.status_code in (401, 403, 429):
+        return [], True       # session cookie missing, expired, or throttled
     if resp.status_code != 200:
         return [], False      # 404/other — genuinely no feed
 
@@ -613,7 +636,7 @@ def search_users(query: str, limit: int = 10) -> list[dict]:
     url = "https://account.venmo.com/search"
     params = {"query": query, "searchType": "users", "pageSize": min(limit, 20)}
     try:
-        resp = SESSION.get(url, params=params, timeout=15)
+        resp = SESSION.get(url, params=params, cookies=_AUTH_COOKIES or None, timeout=15)
     except requests.RequestException as exc:
         return [{"error": str(exc)}]
 
@@ -643,7 +666,7 @@ def search_users(query: str, limit: int = 10) -> list[dict]:
                 "profile_url": f"https://venmo.com/{u.get('username')}",
             })
         if not results:
-            hint = "" if SESSION.cookies else " (tip: add a session cookie for better results)"
+            hint = "" if _AUTH_COOKIES else " (tip: add a session cookie for better results)"
             return [{"note": f"No results returned{hint}."}]
         return results
     except (json.JSONDecodeError, KeyError) as exc:
