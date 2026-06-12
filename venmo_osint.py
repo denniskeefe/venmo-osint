@@ -233,7 +233,8 @@ def _fetch_scraped_profile(username: str) -> dict:
 
     user = (
         props.get("profileData", {}).get("user")
-        or props.get("user")
+        or props.get("user")            # logged-out page
+        or props.get("otherUser")       # authenticated page (viewing someone else)
         or props.get("profileUser")
     )
     if not user:
@@ -262,11 +263,7 @@ def _fetch_scraped_profile(username: str) -> dict:
 
     txn_note = None
     if not transactions and user.get("id"):
-        transactions, auth_required = _fetch_user_stories(
-            user_id=user["id"],
-            csrf=props.get("csrfToken"),
-            referer=url,
-        )
+        transactions, auth_required = _fetch_user_stories(user["id"], referer=url)
         if auth_required:
             txn_note = (
                 "Transactions require a valid Venmo session cookie. "
@@ -310,11 +307,16 @@ def _name(obj) -> Optional[str]:
     if not obj:
         return None
     if isinstance(obj, dict):
-        return obj.get("displayName") or obj.get("name") or obj.get("username")
+        return (
+            obj.get("displayName")
+            or obj.get("display_name")
+            or obj.get("name")
+            or obj.get("username")
+        )
     return str(obj)
 
 
-def _fetch_user_stories(user_id: str, csrf: Optional[str], referer: str) -> tuple[list[dict], bool]:
+def _fetch_user_stories(user_id: str, referer: str = "https://account.venmo.com/") -> tuple[list[dict], bool]:
     """
     Fetch a user's public transaction feed from Venmo's stories API.
 
@@ -322,15 +324,8 @@ def _fetch_user_stories(user_id: str, csrf: Optional[str], referer: str) -> tupl
     session cookie; without one it returns 401, in which case we return
     ([], True) so the caller can prompt the user to add a cookie.
     """
-    api = f"https://account.venmo.com/api/stories?feedType=user&externalId={user_id}"
-    headers = {
-        "Accept": "application/json",
-        "Referer": referer,
-        "Origin": "https://account.venmo.com",
-    }
-    if csrf:
-        headers["xsrf-token"] = csrf
-        headers["csrf-token"] = csrf
+    api = f"https://api.venmo.com/v1/stories/target-or-actor/{user_id}"
+    headers = {"Accept": "application/json", "Referer": referer}
 
     try:
         resp = SESSION.get(api, headers=headers, timeout=15)
@@ -347,46 +342,34 @@ def _fetch_user_stories(user_id: str, csrf: Optional[str], referer: str) -> tupl
     except json.JSONDecodeError:
         return [], False
 
-    # The feed may be under "stories", "data", or be a bare list.
-    stories = (
-        payload.get("stories")
-        or payload.get("data")
-        or (payload if isinstance(payload, list) else [])
-    )
+    stories = payload.get("data") if isinstance(payload, dict) else payload
+    if not isinstance(stories, list):
+        return [], False
     return [_parse_story(s) for s in stories[:15] if isinstance(s, dict)], False
 
 
 def _parse_story(s: dict) -> dict:
     """Normalize a single Venmo 'story' object into our transaction shape."""
-    title = s.get("title") if isinstance(s.get("title"), dict) else {}
+    payment = s.get("payment") if isinstance(s.get("payment"), dict) else {}
 
-    # Actor / target can live in several places depending on API version
-    actor = (
-        _name(title.get("sender"))
-        or _name(s.get("actor"))
-        or _name(s.get("sender"))
-    )
-    target = (
-        _name(title.get("receiver"))
-        or _name(s.get("target"))
-        or _name(s.get("receiver"))
-    )
+    # actor = who initiated; target.user = the other party
+    actor = _name(payment.get("actor")) or _name(s.get("actor"))
 
-    # Note text
-    note_obj = s.get("note")
-    if isinstance(note_obj, dict):
-        note = note_obj.get("content") or note_obj.get("text")
-    else:
-        note = note_obj
-    note = note or _name(s.get("subtitle")) or s.get("message")
+    target_obj = payment.get("target") if isinstance(payment.get("target"), dict) else {}
+    target = _name(target_obj.get("user")) or _name(target_obj.get("merchant"))
+
+    # Direction: "pay" = actor -> target; "charge" = actor requested from target
+    action = payment.get("action") or s.get("type") or "pay"
+    verb = {"pay": "paid", "charge": "charged"}.get(action, action)
 
     return {
-        "id":     s.get("id"),
-        "date":   s.get("date") or s.get("datetime") or s.get("created_time"),
-        "note":   note,
-        "type":   s.get("type") or title.get("action") or s.get("action") or "paid",
-        "actor":  actor,
-        "target": target,
+        "id":       s.get("id"),
+        "date":     s.get("date_created") or payment.get("date_created"),
+        "note":     s.get("note") or payment.get("note"),
+        "type":     verb,
+        "actor":    actor,
+        "target":   target,
+        "audience": s.get("audience") or payment.get("audience"),
     }
 
 
