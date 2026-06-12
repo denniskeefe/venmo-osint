@@ -1348,6 +1348,18 @@ def handle_405(e):
 
 # ── API routes ────────────────────────────────────────────────────────────────
 
+@app.after_request
+def add_no_cache_headers(resp):
+    """Prevent the browser from serving a stale copy of the page/JS."""
+    # Let the image proxy keep its long-lived cache (avatars rarely change)
+    if request.path.startswith("/api/image-proxy"):
+        return resp
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
+
+
 @app.route("/")
 def index():
     return render_template_string(HTML)
