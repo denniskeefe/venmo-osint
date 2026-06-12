@@ -250,7 +250,7 @@ def _fetch_scraped_profile(username: str) -> dict:
         or props.get("transactions")
         or []
     )
-    for txn in feed[:15]:
+    for txn in feed[:20]:
         payment = txn.get("payment") if isinstance(txn.get("payment"), dict) else {}
         transactions.append({
             "id":     txn.get("id"),
@@ -345,7 +345,7 @@ def _fetch_user_stories(user_id: str, referer: str = "https://account.venmo.com/
     stories = payload.get("data") if isinstance(payload, dict) else payload
     if not isinstance(stories, list):
         return [], False
-    return [_parse_story(s) for s in stories[:15] if isinstance(s, dict)], False
+    return [_parse_story(s) for s in stories[:20] if isinstance(s, dict)], False
 
 
 def _parse_story(s: dict) -> dict:
