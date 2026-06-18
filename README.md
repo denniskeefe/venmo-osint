@@ -1,3 +1,4 @@
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/denniskeefe)
 # Venmo OSINT
 
 A tool for locating and extracting public Venmo profile data. Supports both a CLI and a dark-themed web GUI. Only accesses information Venmo makes publicly available.
