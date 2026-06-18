@@ -175,3 +175,7 @@ vercel.json           # Vercel routing config
 ## Legal
 
 This tool only accesses data Venmo makes publicly available. Do not use it to harass, stalk, or harm individuals. You are responsible for complying with Venmo's Terms of Service and applicable laws.
+
+---
+
+Created by **Dennis Keefe**. If you find this useful, you can [buy me a coffee ☕](https://ko-fi.com/denniskeefe).

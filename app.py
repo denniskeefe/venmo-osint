@@ -97,6 +97,16 @@ HTML = r"""<!DOCTYPE html>
   .cookie-badge.on  { background: rgba(0,212,170,.12); color: var(--accent2); }
   .cookie-badge.off { background: rgba(255,79,107,.12); color: var(--danger); }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .kofi-btn {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    margin-top: 12px; padding: 8px 12px; border-radius: 8px;
+    background: #29abe0; color: #fff; font-size: 12px; font-weight: 700;
+    text-decoration: none; transition: background .15s;
+  }
+  .kofi-btn:hover { background: #1f93c4; }
+  .credit { margin-top: 10px; color: var(--muted); font-size: 11px; text-align: center; }
+  .credit strong { color: var(--text); font-weight: 600; }
+  .mobile-credit { display: none; margin-top: 16px; }
 
   /* ── topbar ──────────────────────────────────────────────── */
   .topbar { padding: 16px 28px; border-bottom: 1px solid var(--border);
@@ -169,6 +179,9 @@ HTML = r"""<!DOCTYPE html>
 
     /* cookie panel full width */
     .cookie-panel { max-width: 100%; }
+
+    /* show credit + tip in the cookie panel since the sidebar is hidden */
+    .mobile-credit { display: block; }
 
     /* mode tabs scrollable */
     .mode-tabs { overflow-x: auto; width: 100%; }
@@ -439,6 +452,15 @@ HTML = r"""<!DOCTYPE html>
         <span class="dot"></span><span id="ck-label">checking…</span>
       </div>
       <div style="color:var(--muted);font-size:11px">Public data only</div>
+      <a class="kofi-btn" href="https://ko-fi.com/denniskeefe" target="_blank" rel="noopener">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
+          <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
+          <line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/>
+        </svg>
+        Buy me a coffee
+      </a>
+      <div class="credit">Created by <strong>Dennis Keefe</strong></div>
     </div>
   </aside>
 
@@ -627,6 +649,18 @@ HTML = r"""<!DOCTYPE html>
             4. In <strong>Headers</strong> → find <code>Cookie:</code> under Request Headers<br>
             5. Copy the full value and paste it above<br><br>
             The cookie is saved to <code>~/.venmo_osint</code> (chmod 600).
+          </div>
+
+          <div class="mobile-credit">
+            <a class="kofi-btn" href="https://ko-fi.com/denniskeefe" target="_blank" rel="noopener">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
+                <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
+                <line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/>
+              </svg>
+              Buy me a coffee
+            </a>
+            <div class="credit">Created by <strong>Dennis Keefe</strong></div>
           </div>
         </div>
       </div>
