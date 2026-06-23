@@ -104,8 +104,10 @@ HTML = r"""<!DOCTYPE html>
     text-decoration: none; transition: background .15s;
   }
   .kofi-btn:hover { background: #1f93c4; }
-  .credit { margin-top: 10px; color: var(--muted); font-size: 11px; text-align: center; }
+  .credit { margin-top: 10px; color: var(--muted); font-size: 11px; text-align: center; line-height: 1.7; }
   .credit strong { color: var(--text); font-weight: 600; }
+  .credit-link { color: var(--accent); text-decoration: none; }
+  .credit-link:hover { text-decoration: underline; }
   .mobile-credit { display: none; margin-top: 16px; }
 
   /* ── topbar ──────────────────────────────────────────────── */
@@ -460,7 +462,10 @@ HTML = r"""<!DOCTYPE html>
         </svg>
         Buy me a coffee
       </a>
-      <div class="credit">Created by <strong>Dennis Keefe</strong></div>
+      <div class="credit">
+        Created by <strong>Dennis Keefe</strong><br>
+        <a href="https://denniskeefe.me/my-projects/" target="_blank" rel="noopener" class="credit-link">See my other projects →</a>
+      </div>
     </div>
   </aside>
 
@@ -660,7 +665,10 @@ HTML = r"""<!DOCTYPE html>
               </svg>
               Buy me a coffee
             </a>
-            <div class="credit">Created by <strong>Dennis Keefe</strong></div>
+            <div class="credit">
+              Created by <strong>Dennis Keefe</strong><br>
+              <a href="https://denniskeefe.me/my-projects/" target="_blank" rel="noopener" class="credit-link">See my other projects →</a>
+            </div>
           </div>
         </div>
       </div>

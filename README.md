@@ -179,4 +179,4 @@ This tool only accesses data Venmo makes publicly available. Do not use it to ha
 
 ---
 
-Created by **Dennis Keefe**. If you find this useful, you can [buy me a coffee ☕](https://ko-fi.com/denniskeefe).
+Created by **Dennis Keefe** — [see my other projects](https://denniskeefe.me/my-projects/). If you find this useful, you can [buy me a coffee ☕](https://ko-fi.com/denniskeefe).
