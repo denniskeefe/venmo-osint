@@ -97,17 +97,22 @@ HTML = r"""<!DOCTYPE html>
   .cookie-badge.on  { background: rgba(0,212,170,.12); color: var(--accent2); }
   .cookie-badge.off { background: rgba(255,79,107,.12); color: var(--danger); }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .projects-btn {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    margin-top: 12px; padding: 9px 12px; border-radius: 8px;
+    background: var(--accent); color: #fff; font-size: 12px; font-weight: 700;
+    text-decoration: none; transition: background .15s, transform .1s;
+  }
+  .projects-btn:hover { background: #0079e0; transform: translateY(-1px); }
   .kofi-btn {
     display: flex; align-items: center; justify-content: center; gap: 7px;
-    margin-top: 12px; padding: 8px 12px; border-radius: 8px;
+    margin-top: 8px; padding: 8px 12px; border-radius: 8px;
     background: #29abe0; color: #fff; font-size: 12px; font-weight: 700;
     text-decoration: none; transition: background .15s;
   }
   .kofi-btn:hover { background: #1f93c4; }
   .credit { margin-top: 10px; color: var(--muted); font-size: 11px; text-align: center; line-height: 1.7; }
   .credit strong { color: var(--text); font-weight: 600; }
-  .credit-link { color: var(--accent); text-decoration: none; }
-  .credit-link:hover { text-decoration: underline; }
   .mobile-credit { display: none; margin-top: 16px; }
 
   /* ── topbar ──────────────────────────────────────────────── */
@@ -454,6 +459,13 @@ HTML = r"""<!DOCTYPE html>
         <span class="dot"></span><span id="ck-label">checking…</span>
       </div>
       <div style="color:var(--muted);font-size:11px">Public data only</div>
+      <a class="projects-btn" href="https://denniskeefe.me/my-projects/" target="_blank" rel="noopener">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        See My Other Projects
+      </a>
       <a class="kofi-btn" href="https://ko-fi.com/denniskeefe" target="_blank" rel="noopener">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
@@ -462,10 +474,7 @@ HTML = r"""<!DOCTYPE html>
         </svg>
         Buy me a coffee
       </a>
-      <div class="credit">
-        Created by <strong>Dennis Keefe</strong><br>
-        <a href="https://denniskeefe.me/my-projects/" target="_blank" rel="noopener" class="credit-link">See my other projects →</a>
-      </div>
+      <div class="credit">Created by <strong>Dennis Keefe</strong></div>
     </div>
   </aside>
 
@@ -657,6 +666,13 @@ HTML = r"""<!DOCTYPE html>
           </div>
 
           <div class="mobile-credit">
+            <a class="projects-btn" href="https://denniskeefe.me/my-projects/" target="_blank" rel="noopener">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+                <rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+              </svg>
+              See My Other Projects
+            </a>
             <a class="kofi-btn" href="https://ko-fi.com/denniskeefe" target="_blank" rel="noopener">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
@@ -665,10 +681,7 @@ HTML = r"""<!DOCTYPE html>
               </svg>
               Buy me a coffee
             </a>
-            <div class="credit">
-              Created by <strong>Dennis Keefe</strong><br>
-              <a href="https://denniskeefe.me/my-projects/" target="_blank" rel="noopener" class="credit-link">See my other projects →</a>
-            </div>
+            <div class="credit">Created by <strong>Dennis Keefe</strong></div>
           </div>
         </div>
       </div>
